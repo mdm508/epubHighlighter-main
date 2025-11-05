@@ -37,7 +37,7 @@ epub/*.pdf
 # temp extraction dirs
 epub/*/
 **/tmp-*/
-input/*
+
 
 # auto-generated rare word lists
 epub/*-rare-words-auto.txt

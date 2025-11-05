@@ -460,25 +460,60 @@ def write_definitions_epub_from_wordlist(
     print(f"[6/8] Definitions-only EPUB saved to {output_path}")
 
 
+import re
+
+def _highlight_word_in_sentence(word: str, sentence: str) -> str:
+    """
+    Wrap the *first* case-insensitive occurrence of `word` in <b>...</b> in the sentence.
+    If sentence is empty, just return "".
+    """
+    if not sentence:
+        return ""
+
+    # escape word for regex
+    pat = re.compile(rf"\b({re.escape(word)})\b", flags=re.IGNORECASE)
+
+    def _repl(m: re.Match) -> str:
+        return f"<b>{m.group(1)}</b>"
+
+    # only replace first occurrence
+    return pat.sub(_repl, sentence, count=1)
+
+
 def write_anki_tsv(all_entries: list[tuple[str, str, str]], output_path: str) -> None:
+    """
+    all_entries: [(word, def_html, sentence), ...]
+    Anki TSV format (3 columns):
+      1. word
+      2. sentence-with-word-bolded (can be empty)
+      3. definition HTML (no sentence)
+    We skip rows that have neither sentence nor definition.
+    """
     print(f"[7/8] Writing Anki TSV ({len(all_entries)} total entries before filtering) ...")
     lines = []
     for word, html_def, ctx_sent in all_entries:
-        if not html_def:
-            continue
-        if ctx_sent:
-            full_html = f"<p><em>{ctx_sent}</em></p>{html_def}"
-        else:
-            full_html = html_def
-        clean_html = full_html.replace("\t", " ").replace("\r", "").replace("\n", " ")
-        clean_word = word.replace("\t", " ").replace("\r", "").replace("\n", " ")
-        lines.append(f"{clean_word}\t{clean_html}")
+        # bold the word in the sentence
+        highlighted_sent = _highlight_word_in_sentence(word, ctx_sent)
+
+        # we only really need to strip tabs/newlines for TSV safety
+        col1 = word.replace("\t", " ").replace("\r", "").replace("\n", " ")
+        col2 = highlighted_sent.replace("\t", " ").replace("\r", "").replace("\n", " ") if highlighted_sent else ""
+        col3 = ""
+        if html_def:
+            # just the dict html, no sentence
+            col3 = html_def.replace("\t", " ").replace("\r", "").replace("\n", " ")
+
+        # if absolutely everything is empty except the word, still useful → keep it
+        line = f"{col1}\t{col2}\t{col3}"
+        lines.append(line)
+
     if lines:
         with open(output_path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
         print(f"[7/8] Anki TSV saved to {output_path} ({len(lines)} cards).")
     else:
-        print("[7/8] No non-empty definitions to write to Anki TSV.")
+        print("[7/8] No entries to write to Anki TSV.")
+ 
 
 
 def convert_epub_to_pdf(epub_path: str, pdf_path: str) -> None:
