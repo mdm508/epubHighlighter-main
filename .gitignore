@@ -1,0 +1,52 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Virtual environments
+venv/
+.env/
+.venv/
+env/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS stuff
+.DS_Store
+Thumbs.db
+
+# --- Project-specific outputs ---
+# generated EPUBs / PDFs / TSVs
+epub/*-highlighted.epub
+epub/*-definitions.epub
+epub/*-defs-anki.tsv
+epub/*.pdf
+
+# temp extraction dirs
+epub/*/
+**/tmp-*/
+input/*
+
+# auto-generated rare word lists
+epub/*-rare-words-auto.txt
+
+# logs
+*.log
+
+# --- Dictionary data (if large / proprietary) ---
+dicts/
+# or if you only want to ignore contents:
+# dicts/*
+# !dicts/README.md
