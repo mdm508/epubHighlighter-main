@@ -39,11 +39,10 @@ class HTMLDefinitionLookup:
             return self._cache[cache_key]
 
         html = (
-            self._lookup_with_cross_reference(key, self._lookup_oald)
-            or self._lookup_with_cross_reference(key, self._lookup_concise)
+            self._lookup_with_cross_reference(key, self._lookup_oald, strict=True)
+            or self._lookup_with_cross_reference(key, self._lookup_concise, strict=True)
             or self._lookup_with_cross_reference(key, self._lookup_fallback)
         )
-        html = self._strip_unwanted_segments(html)
         self._cache[cache_key] = html
         return html
 
@@ -61,7 +60,8 @@ class HTMLDefinitionLookup:
             entry = parser.get_entry(word)
         except KeyError:
             return ""
-        return render_entry_html(entry)
+        html = render_entry_html(entry)
+        return self._strip_unwanted_segments(html)
 
     def _lookup_concise(self, word: str) -> str:
         parser = self._get_concise_parser()
@@ -99,6 +99,7 @@ class HTMLDefinitionLookup:
         self,
         word: str,
         provider: Optional[Callable[[str], str]],
+        strict: bool = False,
         seen: Optional[Set[str]] = None,
     ) -> str:
         if provider is None:
@@ -112,6 +113,8 @@ class HTMLDefinitionLookup:
             return ""
         seen.add(lowered)
         html = provider(key)
+        if not strict:
+            html = self._strip_unwanted_segments(html)
         if self._is_valid_definition(html):
             return html
         target = self._extract_cross_reference(html)
