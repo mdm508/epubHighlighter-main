@@ -12,7 +12,7 @@ import ebooklib
 from ebooklib import epub
 
 from wordfreq import zipf_frequency
-from endict import StarDictWrapper  # your multi-dict loader
+from dictionary_lookup import HTMLDefinitionLookup
 
 # ----------------------------------------------------
 # CONFIG
@@ -205,7 +205,7 @@ def discover_section_title(filename: str, body_content: str, toc_map: dict[str, 
 
 
 def build_glossary_section(
-    d: StarDictWrapper,
+    d: HTMLDefinitionLookup,
     matched_words: list[str],
     section_title: str,
     def_cache: dict[str, str],
@@ -461,50 +461,72 @@ def write_definitions_epub_from_wordlist(
 
 
 import re
+import html
+
+def _sanitize_for_tsv(text: str) -> str:
+    """Make text safe for a TSV cell."""
+    if not text:
+        return ""
+    # unescape HTML entities first
+    text = html.unescape(text)
+    # kill tabs/newlines
+    text = text.replace("\t", " ").replace("\r", " ").replace("\n", " ")
+    # collapse all whitespace
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def _prepare_html_for_tsv(html_text: str | None) -> str:
+    """
+    Keep HTML intact but strip characters that would break TSV.
+    """
+    if not html_text:
+        return ""
+    return (
+        html_text.replace("\t", " ").replace("\r", " ").replace("\n", " ").strip()
+    )
 
 def _highlight_word_in_sentence(word: str, sentence: str) -> str:
     """
-    Wrap the *first* case-insensitive occurrence of `word` in <b>...</b> in the sentence.
-    If sentence is empty, just return "".
+    Wrap first occurrence of word (case-insensitive) in <b>…</b>.
+    Run AFTER sanitizing so regex doesn't get confused by weird whitespace.
     """
     if not sentence:
         return ""
-
-    # escape word for regex
     pat = re.compile(rf"\b({re.escape(word)})\b", flags=re.IGNORECASE)
 
     def _repl(m: re.Match) -> str:
-        return f"<b>{m.group(1)}</b>"
+        return f'<span class="anki-word">{m.group(1)}</span>'
 
-    # only replace first occurrence
     return pat.sub(_repl, sentence, count=1)
-
 
 def write_anki_tsv(all_entries: list[tuple[str, str, str]], output_path: str) -> None:
     """
     all_entries: [(word, def_html, sentence), ...]
-    Anki TSV format (3 columns):
-      1. word
-      2. sentence-with-word-bolded (can be empty)
-      3. definition HTML (no sentence)
-    We skip rows that have neither sentence nor definition.
+    TSV:
+      col1 = word
+      col2 = blockquoted sentence + definition HTML
     """
     print(f"[7/8] Writing Anki TSV ({len(all_entries)} total entries before filtering) ...")
     lines = []
     for word, html_def, ctx_sent in all_entries:
-        # bold the word in the sentence
-        highlighted_sent = _highlight_word_in_sentence(word, ctx_sent)
+        # sanitize sentence first
+        clean_sent = _sanitize_for_tsv(ctx_sent)
+        # then highlight
+        clean_sent = _highlight_word_in_sentence(word, clean_sent)
+        quote_html = (
+            _prepare_html_for_tsv(f"<blockquote>{clean_sent}</blockquote>")
+            if clean_sent
+            else ""
+        )
 
-        # we only really need to strip tabs/newlines for TSV safety
-        col1 = word.replace("\t", " ").replace("\r", "").replace("\n", " ")
-        col2 = highlighted_sent.replace("\t", " ").replace("\r", "").replace("\n", " ") if highlighted_sent else ""
-        col3 = ""
-        if html_def:
-            # just the dict html, no sentence
-            col3 = html_def.replace("\t", " ").replace("\r", "").replace("\n", " ")
+        # sanitize word + def for tsv
+        col1 = _sanitize_for_tsv(word)
+        definition_html = _prepare_html_for_tsv(html_def)
+        combined = f"{quote_html}{definition_html}"
 
-        # if absolutely everything is empty except the word, still useful → keep it
-        line = f"{col1}\t{col2}\t{col3}"
+        # we always write 2 columns so Anki can map them
+        line = f"{col1}\t{combined}"
         lines.append(line)
 
     if lines:
@@ -513,6 +535,7 @@ def write_anki_tsv(all_entries: list[tuple[str, str, str]], output_path: str) ->
         print(f"[7/8] Anki TSV saved to {output_path} ({len(lines)} cards).")
     else:
         print("[7/8] No entries to write to Anki TSV.")
+
  
 
 
@@ -546,8 +569,8 @@ def main():
     toc_map = build_toc_title_map(book)
     words_to_replace = read_words_into_dictionary(actual_wordlist_path)
 
-    print("[2/8] Loading dictionaries (via StarDictWrapper) ...")
-    english_dict = StarDictWrapper()
+    print("[2/8] Loading dictionaries (via structured lookup) ...")
+    english_dict = HTMLDefinitionLookup()
     print("[2/8] Dictionaries loaded.")
 
     definition_cache: dict[str, str] = {}
